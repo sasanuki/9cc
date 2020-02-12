@@ -20,6 +20,28 @@ struct Token {
     char *str;      // トークン文字列
 };
 
+typedef enum {
+    ND_ADD, // +
+    ND_SUB, // -
+    ND_MUL, // *
+    ND_DIV, // /
+    ND_NUM, // 整数
+}   NodeKind;
+
+typedef struct Node Node;
+
+struct Node {
+    NodeKind kind;  // ノードの型
+    Node *lhs;      // 左辺 left-hand side
+    Node *rhs;      // 右辺 right-hand side
+    int val;        // kindがND_NUMの場合のみ使う
+};
+
+// 関数プロト（Cの場合は使う関数を事前に分かっていないといけない）
+Node *expr();
+Node *mul();
+Node *primary();
+
 // 現在着目しているトークン
 Token *token;
 // 入力プログラム
@@ -33,7 +55,7 @@ void error_at(char *loc, char *fmt, ...){
 
     int pos = loc - user_input;
     fprintf(stderr, "%s\n", user_input);
-    fprintf(stderr, "*s", pos, "");
+    fprintf(stderr, "%*s", pos, "");
     fprintf(stderr, "^ ");
 
     vfprintf(stderr, fmt, ap);
@@ -77,6 +99,66 @@ int expect_number(){
 
 bool at_eof() {
     return token->kind == TK_EOF;
+}
+
+Node *new_node(NodeKind kind, Node *lhs, Node *rhs){
+    Node *node = calloc(1, sizeof(Node));
+    node->kind = kind;
+    node->lhs = lhs;
+    node->rhs = rhs;
+    return node;
+}
+
+Node *new_node_num(int val){
+    Node *node = calloc(1, sizeof(Node));
+    node->kind = ND_NUM;
+    node->val = val;
+    return node;
+}
+
+Node *expr(){
+    Node *node = mul();
+
+    for(;;){
+        if(consume('+')){
+            node = new_node(ND_ADD, node, mul());
+        }
+        else if (consume('-')) {
+            node = new_node(ND_SUB, node, mul());
+        }
+        else{
+            return node;
+        }
+    }
+}
+
+Node *mul(){
+    Node *node = primary();
+
+    for(;;){
+        if(consume('*')){
+            node = new_node(ND_MUL, node, primary());
+        }
+        else if(consume('/')){
+            node = new_node(ND_DIV, node, primary());
+        }
+        else{
+            return node;
+        }
+    }
+}
+
+Node *primary(){
+    // 「(」が入っていれば「)」があるはず
+    if (consume('('))
+    {
+        Node *node = expr();
+        expect(')');
+        return node;
+    }
+    
+    // そうでなければ数値
+    return new_node_num(expect_number());
 }
 
 Token *new_token(TokenKind kind, Token *cur, char *str){
