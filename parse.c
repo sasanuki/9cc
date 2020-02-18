@@ -9,6 +9,8 @@ Node *mul();
 Node *unary();
 Node *primary();
 
+Node *code[100];
+
 int expect_number(){
     if(token->kind != TK_NUM){
         error_at(token->str, "数ではありません");
@@ -17,7 +19,6 @@ int expect_number(){
     token = token->next;
     return val;
 }
-
 
 // 次のトークンが期待している記号のときにはトークンを１つ読み進める
 // それ以外の場合にはエラーを報告
@@ -38,21 +39,35 @@ Node *new_node(NodeKind kind, Node *lhs, Node *rhs){
     return node;
 }
 
-Node *expr(){
+void *program() {
+    int i = 0;
+    while (!at_eof())
+    {
+        code[i++] = stmt();
+    }
+    code[i] = NULL;
+}
+
+Node *stmt() {
+    Node *node = expr();
+    expect(";");
+    return node;
+}
+
+Node *expr() {
+    return assign();
+}
+
+Node *assign() {
     Node *node = equality();
 
-    for(;;){
-        if(consume("+")){
-            node = new_node(ND_ADD, node, equality());
-        }
-        else if (consume("-")) {
-            node = new_node(ND_SUB, node, equality());
-        }
-        else{
-            return node;
-        }
+    if (consume("=")) {
+        node = new_node(ND_ASSIGN, node, assign());
     }
+
+    return node;
 }
+
 
 Node *equality(){
     Node *node = relational();
@@ -137,6 +152,16 @@ Node *unary(){
 }
 
 Node *primary(){
+
+    // ローカル変数
+    Token *tok = consume_ident();
+    if (tok) {
+        Node *node = calloc(1, sizeof(Node));
+        node->kind = ND_LVAR;
+        node->offset = (tok->str[0] - 'a' + 1) * 8;
+        return node;
+    }
+
     // 「(」が入っていれば「)」があるはず
     if (consume("("))
     {

@@ -34,6 +34,15 @@ bool consume(char *op) {
     return true;
 }
 
+Token *consume_ident(void) {
+    if (token->kind != TK_IDENT) {
+        return NULL;
+    }
+    Token *token = token;
+    token = token->next;
+    return token;
+}
+
 bool at_eof() {
     return token->kind == TK_EOF;
 }
@@ -68,6 +77,12 @@ Token *tokenize(char *p) {
         // skip space char
         if (isspace(*p)){
             p++;
+            continue;
+        }
+
+        if ('a' <= *p && *p <= 'z') {
+            cur = new_token(TK_IDENT, cur, p++, 1);
+            cur->len = 1;
             continue;
         }
 
