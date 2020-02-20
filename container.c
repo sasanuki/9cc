@@ -1,114 +1,117 @@
 #include "9cc.h"
 
-// エラー報告関数
-// printfと同じ引数
-void error_at(char *loc, char *fmt, ...){
-    va_list ap;
-    va_start(ap, fmt);
+// Pushes the given node's address to the stack.
+static void gen_addr(Node *node) {
+  if (node->kind == ND_VAR) {
+    int offset = (node->name - 'a' + 1) * 8;
+    printf("  lea rax, [rbp-%d]\n", offset);
+    printf("  push rax\n");
+    return;
+  }
 
-    int pos = loc - user_input;
-    fprintf(stderr, "%s\n", user_input);
-    fprintf(stderr, "%*s", pos, "");
-    fprintf(stderr, "^ ");
-
-    vfprintf(stderr, fmt, ap);
-    fprintf(stderr, "\n");
-    exit(1);
+  error("not an lvalue");
 }
 
-void error(char *fmt, ...){
-    va_list ap;
-    va_start(ap, fmt);
-    vfprintf(stderr, fmt, ap);
-    fprintf(stderr, "\n");
-    exit(1);
+static void load(void) {
+  printf("  pop rax\n");
+  printf("  mov rax, [rax]\n");
+  printf("  push rax\n");
 }
 
-bool consume(char *op) {
-    if (token->kind != TK_RESERVED || 
-        strlen(op) != token->len || 
-        memcmp(token->str, op, token->len)) {
-        return false;
-    }
-    token = token->next;
-    return true;
+static void store(void) {
+  printf("  pop rdi\n");
+  printf("  pop rax\n");
+  printf("  mov [rax], rdi\n");
+  printf("  push rdi\n");
 }
 
-Token *consume_ident(void) {
-    if (token->kind != TK_IDENT) {
-        return NULL;
-    }
-    Token *token = token;
-    token = token->next;
-    return token;
+// Generate code for a given node.
+static void gen(Node *node) {
+  switch (node->kind) {
+  case ND_NUM:
+    printf("  push %ld\n", node->val);
+    return;
+  case ND_EXPR_STMT:
+    gen(node->lhs);
+    printf("  add rsp, 8\n");
+    return;
+  case ND_VAR:
+    gen_addr(node);
+    load();
+    return;
+  case ND_ASSIGN:
+    gen_addr(node->lhs);
+    gen(node->rhs);
+    store();
+    return;
+  case ND_RETURN:
+    gen(node->lhs);
+    printf("  pop rax\n");
+    printf("  jmp .L.return\n");
+    return;
+  }
+
+  gen(node->lhs);
+  gen(node->rhs);
+
+  printf("  pop rdi\n");
+  printf("  pop rax\n");
+
+  switch (node->kind) {
+  case ND_ADD:
+    printf("  add rax, rdi\n");
+    break;
+  case ND_SUB:
+    printf("  sub rax, rdi\n");
+    break;
+  case ND_MUL:
+    printf("  imul rax, rdi\n");
+    break;
+  case ND_DIV:
+    printf("  cqo\n");
+    printf("  idiv rdi\n");
+    break;
+  case ND_EQ:
+    printf("  cmp rax, rdi\n");
+    printf("  sete al\n");
+    printf("  movzb rax, al\n");
+    break;
+  case ND_NE:
+    printf("  cmp rax, rdi\n");
+    printf("  setne al\n");
+    printf("  movzb rax, al\n");
+    break;
+  case ND_LT:
+    printf("  cmp rax, rdi\n");
+    printf("  setl al\n");
+    printf("  movzb rax, al\n");
+    break;
+  case ND_LE:
+    printf("  cmp rax, rdi\n");
+    printf("  setle al\n");
+    printf("  movzb rax, al\n");
+    break;
+  }
+
+  printf("  push rax\n");
 }
 
-bool at_eof() {
-    return token->kind == TK_EOF;
-}
+void codegen(Node *node) {
+  printf(".intel_syntax noprefix\n");
+  printf(".global main\n");
+  printf("main:\n");
 
-Node *new_node_num(int val){
-    Node *node = calloc(1, sizeof(Node));
-    node->kind = ND_NUM;
-    node->val = val;
-    return node;
-}
+  // Prologue
+  printf("  push rbp\n");
+  printf("  mov rbp, rsp\n");
+  printf("  sub rsp, 208\n");
 
-Token *new_token(TokenKind kind, Token *cur, char *str, int len){
-    Token *tok = calloc(1, sizeof(Token));
-    tok->kind = kind;
-    tok->str = str;
-    tok->len = len;
-    cur->next = tok;
-    return tok;
-}
+  for (Node *n = node; n; n = n->next)
+    gen(n);
 
-bool startswitch(char *p, char *q){
-    // pとqを先頭nバイト分比較する
-    return memcmp(p, q, strlen(q)) == 0;
-}
-
-Token *tokenize(char *p) {
-    Token head;
-    head.next = NULL;
-    Token *cur = &head;
-
-    while(*p){
-        // skip space char
-        if (isspace(*p)){
-            p++;
-            continue;
-        }
-
-        if ('a' <= *p && *p <= 'z') {
-            cur = new_token(TK_IDENT, cur, p++, 1);
-            cur->len = 1;
-            continue;
-        }
-
-        if (startswitch(p, "==") || startswitch(p, "!=") ||
-            startswitch(p, "<=") || startswitch(p, ">=")) {
-            cur = new_token(TK_RESERVED, cur, p, 2);
-            p += 2;
-            continue;
-        }
-
-        if (strchr("+-*/()<>", *p)) {
-            cur = new_token(TK_RESERVED, cur, p++, 1);
-            continue;
-        }
-
-        if (isdigit(*p)) {
-            cur = new_token(TK_NUM, cur, p, 0);
-            char *q = p;
-            cur->val = strtol(p, &p, 10);
-            cur->len = p - q;
-            continue;
-        }
-
-        error("トークナイズできません");
-    }
-
-    new_token(TK_EOF, cur, p, 0);
-    return head.next;
+  // Epilogue
+  printf(".L.return:\n");
+  printf("  mov rsp, rbp\n");
+  printf("  pop rbp\n");
+  printf("  ret\n");
 }

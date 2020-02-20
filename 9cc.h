@@ -5,72 +5,74 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef enum {
-    TK_RESERVED,    // 記号
-    TK_IDENT,       // 識別子
-    TK_NUM,         // 整数トークン
-    TK_EOF,         // 入力終端トークン
-}   TokenKind;
+//
+// tokenize.c
+//
 
+typedef enum {
+  TK_RESERVED, // Keywords or punctuators
+  TK_IDENT,    // Identifiers
+  TK_NUM,      // Integer literals
+  TK_EOF,      // End-of-file markers
+} TokenKind;
+
+// Token type
 typedef struct Token Token;
-
 struct Token {
-    TokenKind kind; // トークンの型
-    Token *next;    // 次の入力トークン
-    int val;        // kindがTK_NUMのときの数値
-    char *str;      // トークン文字列
-    int len;        // トークンの長さ
+  TokenKind kind; // Token kind
+  Token *next;    // Next token
+  long val;       // If kind is TK_NUM, its value
+  char *str;      // Token string
+  int len;        // Token length
 };
 
-typedef enum {
-    ND_ADD,     // +
-    ND_SUB,     // -
-    ND_MUL,     // *
-    ND_DIV,     // /
-    ND_ASSIGN,  // =
-    ND_EQ,      // ==
-    ND_NE,      // !=
-    ND_LT,      // <, >
-    ND_LE,      // <=, >=
-    ND_LVAR,    // ローカル変数
-    ND_NUM,     // 整数
-}   NodeKind;
-
-typedef struct Node Node;
-
-// 抽象木構文のNode
-struct Node {
-    NodeKind kind;  // ノードの型
-    Node *lhs;      // 左辺 left-hand side
-    Node *rhs;      // 右辺 right-hand side
-    int val;        // kindがND_NUMの場合のみ使う
-    int offset;     // kindがND_LVARの場合のみ使う
-};
-
-// externは定義であって実装ではないので.cのどこかに実装しておく必要がある
-// 現在着目しているトークン
-extern Token *token;
-// 入力プログラム
-extern char *user_input;
-
-// main
-Token *tokenize(char *p);
-Node *expr();
-void gen(Node *node);
-
-// parse
-int expect_number();
-void expect(char *op);
-Node *new_node(NodeKind kind, Node *lhs, Node *rhs);
-Node *expr();
-
-// container
-void error_at(char *loc, char *fmt, ...);
 void error(char *fmt, ...);
+void error_at(char *loc, char *fmt, ...);
 bool consume(char *op);
 Token *consume_ident(void);
-bool at_eof();
-Node *new_node_num(int val);
-Token *new_token(TokenKind kind, Token *cur, char *str, int len);
-bool startswitch(char *p, char *q);
-Token *tokenize(char *p);
+void expect(char *op);
+long expect_number(void);
+bool at_eof(void);
+Token *tokenize(void);
+
+extern char *user_input;
+extern Token *token;
+
+//
+// parse.c
+//
+
+typedef enum {
+  ND_ADD,       // +
+  ND_SUB,       // -
+  ND_MUL,       // *
+  ND_DIV,       // /
+  ND_EQ,        // ==
+  ND_NE,        // !=
+  ND_LT,        // <
+  ND_LE,        // <=
+  ND_ASSIGN,    // =
+  ND_RETURN,    // "return"
+  ND_EXPR_STMT, // Expression statement
+  ND_VAR,       // Variable
+  ND_NUM,       // Integer
+} NodeKind;
+
+// AST node type
+typedef struct Node Node;
+struct Node {
+  NodeKind kind; // Node kind
+  Node *next;    // Next node
+  Node *lhs;     // Left-hand side
+  Node *rhs;     // Right-hand side
+  char name;     // Used if kind == ND_VAR
+  long val;      // Used if kind == ND_NUM
+};
+
+Node *program(void);
+
+//
+// codegen.c
+//
+
+void codegen(Node *node);
